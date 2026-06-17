@@ -28,23 +28,28 @@ export default function ConvergenceChart({ convergence, baseline, final }) {
     const bests = series.map((p) => p.best)
     const lo = Math.min(...bests)
     const span = Math.max(base - lo, 0)
-    // inst07 (mejora): zoom apretado en el salto — caída inicial clipeada arriba.
-    // inst10 (sin mejora): piso exactamente en el borde inferior, espacio arriba para ver la caída.
-    const yMin = span > 0 ? lo - 1 : lo
-    const yMax = span > 0 ? base + Math.max(3, span) : lo + 12
+    // inst07 (mejora): zoom apretado en el salto, caída inicial clipeada.
+    // inst10 (sin mejora): ventana ajustada al piso; el path arranca desde el primer
+    // punto dentro del rango para evitar el palo vertical del clip.
+    const yMin = span > 0 ? lo - 1 : lo - 1
+    const yMax = span > 0 ? base + Math.max(3, span) : lo + 6
     const entry = bests[0]
 
     const xScale = (it) => M.left + (xMax === 0 ? 0 : (it / xMax) * plotW)
     const yScale = (v) => M.top + (yMax === yMin ? 0 : (1 - (v - yMin) / (yMax - yMin)) * plotH)
 
+    // Trim puntos sobre yMax para no dibujar la línea vertical del clip
+    const firstVis = series.findIndex((p) => p.best <= yMax)
+    const drawSeries = firstVis > 0 ? series.slice(firstVis) : series
+
     let d = ''
-    series.forEach((p, i) => {
+    drawSeries.forEach((p, i) => {
       const x = xScale(p.it)
-      const y = yScale(p.best)
-      if (i === 0) d += `M ${x} ${y}`
-      else d += ` L ${x} ${yScale(series[i - 1].best)} L ${x} ${y}`
+      if (i === 0) d += `M ${x} ${yScale(p.best)}`
+      else d += ` L ${x} ${yScale(drawSeries[i - 1].best)} L ${x} ${yScale(p.best)}`
     })
-    const area = `${d} L ${xScale(xMax)} ${M.top + plotH} L ${xScale(0)} ${M.top + plotH} Z`
+    const areaStart = drawSeries.length > 0 ? xScale(drawSeries[0].it) : xScale(0)
+    const area = `${d} L ${xScale(xMax)} ${M.top + plotH} L ${areaStart} ${M.top + plotH} Z`
 
     const runX = (conv.run_bounds || []).map((b) => xScale(b))
     return {
