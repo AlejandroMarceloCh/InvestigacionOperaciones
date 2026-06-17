@@ -4,9 +4,6 @@ import { fmt } from '../lib/format.js'
 
 const ACCENT = '#2dd4bf'
 
-// Curva de convergencia (mejor Σ Cₒ vs iteración) para las instancias con traza
-// registrada (07 y 10). El eje Y se enfoca cerca del óptimo para que la mejora
-// final sea legible; la caída inicial brusca entra clipeada desde el tope.
 export default function ConvergenceChart({ convergence, baseline, final }) {
   const available = Object.keys(convergence).sort()
   const [sel, setSel] = useState(available[0])
@@ -28,17 +25,27 @@ export default function ConvergenceChart({ convergence, baseline, final }) {
     const bests = series.map((p) => p.best)
     const lo = Math.min(...bests)
     const span = Math.max(base - lo, 0)
-    // inst07 (mejora): zoom apretado en el salto, caída inicial clipeada.
-    // inst10 (sin mejora): ventana ajustada al piso; el path arranca desde el primer
-    // punto dentro del rango para evitar el palo vertical del clip.
-    const yMin = span > 0 ? lo - 1 : lo - 1
-    const yMax = span > 0 ? base + Math.max(3, span) : lo + 6
-    const entry = bests[0]
 
+    if (span === 0) {
+      // Bar chart: mejor valor al cierre de cada reinicio
+      const bounds = [...(conv.run_bounds || []), xMax]
+      const restartBests = bounds.map((endIt) => {
+        const pts = series.filter((p) => p.it <= endIt)
+        return pts.length > 0 ? Math.min(...pts.map((p) => p.best)) : lo
+      })
+      const yMin = lo - 4
+      const yMax = lo + 4
+      const yScale = (v) => M.top + (1 - (v - yMin) / (yMax - yMin)) * plotH
+      return { barMode: true, restartBests, lo, yMin, yMax, yScale }
+    }
+
+    // Line chart: inst con mejora real
+    const yMin = lo - 1
+    const yMax = base + Math.max(3, span)
+    const entry = bests[0]
     const xScale = (it) => M.left + (xMax === 0 ? 0 : (it / xMax) * plotW)
     const yScale = (v) => M.top + (yMax === yMin ? 0 : (1 - (v - yMin) / (yMax - yMin)) * plotH)
 
-    // Trim puntos sobre yMax para no dibujar la línea vertical del clip
     const firstVis = series.findIndex((p) => p.best <= yMax)
     const drawSeries = firstVis > 0 ? series.slice(firstVis) : series
 
@@ -53,12 +60,138 @@ export default function ConvergenceChart({ convergence, baseline, final }) {
 
     const runX = (conv.run_bounds || []).map((b) => xScale(b))
     return {
-      path: d, area, xMax, yMin, yMax, entry, xScale, yScale, runX,
+      barMode: false, path: d, area, xMax, yMin, yMax, entry, xScale, yScale, runX,
       baseY: yScale(base), finX: xScale(xMax), finY: yScale(fin),
     }
   }, [conv, base, fin, plotW, plotH])
 
-  const { path, area, xMax, yMin, yMax, entry, xScale, yScale, runX, baseY, finX, finY } = calc
+  const header = (
+    <div className="card__head">
+      <div>
+        <h2 className="card__title">Convergencia</h2>
+        {calc.barMode ? (
+          <p className="card__sub">
+            Mejor Σ Cₒ al cierre de cada reinicio. Los cuatro arranques llegan al mismo valor —
+            no hay forma de escapar del piso {fmt(fin)}.
+          </p>
+        ) : (
+          <p className="card__sub">
+            Mejor Σ Cₒ acumulado por iteración. Las verticales marcan los reinicios del
+            multi-arranque; la punteada es la referencia ({fmt(base)}). La vista enfoca el tramo
+            cercano al óptimo (la curva parte de {fmt(calc.entry)}).
+          </p>
+        )}
+      </div>
+      <div className="seg" role="group" aria-label="Seleccionar instancia con traza">
+        {available.map((id) => (
+          <button
+            key={id}
+            type="button"
+            className="seg__btn"
+            aria-pressed={id === sel}
+            onClick={() => setSel(id)}
+          >
+            inst {id}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+
+  // ── Bar chart (span = 0) ──────────────────────────────────────────────────
+  if (calc.barMode) {
+    const { restartBests, lo, yMin, yMax, yScale } = calc
+    const n = restartBests.length
+    const slotW = plotW / n
+    const barW = slotW * 0.5
+    const barFloor = M.top + plotH
+
+    const yRange = yMax - yMin
+    const tickStep = yRange <= 8 ? 2 : 5
+    const firstTick = Math.ceil(yMin / tickStep) * tickStep
+    const yTicks = []
+    for (let v = firstTick; v <= yMax; v += tickStep) yTicks.push(v)
+
+    return (
+      <section className="card" aria-label="Convergencia">
+        {header}
+        <div className="card__body">
+          <svg viewBox={`0 0 ${W} ${H}`} className="conv-svg" role="img" aria-label={`Convergencia por reinicio — instancia ${sel}`}>
+
+            {yTicks.map((v, i) => {
+              const y = yScale(v)
+              return (
+                <g key={`yt-${i}`}>
+                  <line x1={M.left} y1={y} x2={W - M.right} y2={y} className="conv-grid" />
+                  <text x={M.left - 12} y={y + 4} className="conv-axis-label" textAnchor="end">{fmt(v)}</text>
+                </g>
+              )
+            })}
+
+            {restartBests.map((val, i) => {
+              const cx = M.left + slotW * i + slotW / 2
+              const barTop = yScale(val)
+              const barH = barFloor - barTop
+              return (
+                <g key={`bar-${i}`}>
+                  <motion.rect
+                    key={`bar-rect-${sel}-${i}`}
+                    x={cx - barW / 2}
+                    y={barTop}
+                    width={barW}
+                    height={barH}
+                    rx={3}
+                    fill={ACCENT}
+                    fillOpacity={0.18}
+                    stroke={ACCENT}
+                    strokeWidth={1.5}
+                    initial={{ scaleY: 0, originY: 1 }}
+                    animate={{ scaleY: 1 }}
+                    transition={{ duration: 0.6, delay: i * 0.12, ease: [0.16, 1, 0.3, 1] }}
+                    style={{ transformOrigin: `${cx}px ${barFloor}px` }}
+                  />
+                  <motion.text
+                    key={`bar-val-${sel}-${i}`}
+                    x={cx}
+                    y={barTop - 8}
+                    className="conv-run-label"
+                    textAnchor="middle"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: 0.6 + i * 0.12, duration: 0.3 }}
+                  >
+                    {fmt(val)}
+                  </motion.text>
+                  <text x={cx} y={barFloor + 20} className="conv-axis-label" textAnchor="middle">
+                    R{i + 1}
+                  </text>
+                </g>
+              )
+            })}
+
+            <line
+              x1={M.left} y1={yScale(lo)} x2={W - M.right} y2={yScale(lo)}
+              stroke={ACCENT} strokeWidth={1} strokeDasharray="5 4" opacity={0.5}
+            />
+            <text x={W - M.right} y={yScale(lo) - 8} className="conv-baseline-label" textAnchor="end">
+              piso {fmt(lo)}
+            </text>
+
+            <text x={M.left + plotW / 2} y={H - 6} className="conv-axis-title" textAnchor="middle">
+              Reinicio
+            </text>
+            <text transform={`translate(18 ${M.top + plotH / 2}) rotate(-90)`} className="conv-axis-title" textAnchor="middle">
+              mejor Σ Cₒ
+            </text>
+          </svg>
+        </div>
+      </section>
+    )
+  }
+
+  // ── Line chart (span > 0) ─────────────────────────────────────────────────
+  const { path, area, xMax, yMin, yMax, xScale, yScale, runX, baseY, finX, finY } = calc
+  const improved = fin < base
 
   const yRange = yMax - yMin
   const tickStep = yRange <= 10 ? 2 : yRange <= 25 ? 5 : 10
@@ -68,34 +201,9 @@ export default function ConvergenceChart({ convergence, baseline, final }) {
   const xTicks = []
   for (let t = 0; t <= xMax; t += 800) xTicks.push(t)
 
-  const improved = fin < base
-
   return (
     <section className="card" aria-label="Convergencia">
-      <div className="card__head">
-        <div>
-          <h2 className="card__title">Convergencia</h2>
-          <p className="card__sub">
-            Mejor Σ Cₒ acumulado por iteración. Las verticales marcan los reinicios del
-            multi-arranque; la punteada es la referencia ({fmt(base)}). La vista enfoca el tramo
-            cercano al óptimo (la curva parte de {fmt(entry)}).
-          </p>
-        </div>
-        <div className="seg" role="group" aria-label="Seleccionar instancia con traza">
-          {available.map((id) => (
-            <button
-              key={id}
-              type="button"
-              className="seg__btn"
-              aria-pressed={id === sel}
-              onClick={() => setSel(id)}
-            >
-              inst {id}
-            </button>
-          ))}
-        </div>
-      </div>
-
+      {header}
       <div className="card__body">
         <svg viewBox={`0 0 ${W} ${H}`} className="conv-svg" role="img" aria-label={`Convergencia de la instancia ${sel}`}>
           <defs>
