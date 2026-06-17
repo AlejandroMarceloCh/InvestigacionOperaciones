@@ -28,10 +28,10 @@ export default function ConvergenceChart({ convergence, baseline, final }) {
     const bests = series.map((p) => p.best)
     const lo = Math.min(...bests)
     const span = Math.max(base - lo, 0)
-    // inst con mejora (inst07): zoom apretado sobre el salto — caída inicial se clipea.
-    // inst sin mejora (inst10): piso al fondo del frame, curva cae desde arriba.
-    const yMin = span > 0 ? lo - 1 : lo - 1
-    const yMax = span > 0 ? base + Math.max(3, span) : lo + 7
+    // inst07 (mejora): zoom apretado en el salto — caída inicial clipeada arriba.
+    // inst10 (sin mejora): piso exactamente en el borde inferior, espacio arriba para ver la caída.
+    const yMin = span > 0 ? lo - 1 : lo
+    const yMax = span > 0 ? base + Math.max(3, span) : lo + 12
     const entry = bests[0]
 
     const xScale = (it) => M.left + (xMax === 0 ? 0 : (it / xMax) * plotW)
