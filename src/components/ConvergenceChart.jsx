@@ -26,12 +26,13 @@ export default function ConvergenceChart({ convergence, baseline, final }) {
     const series = conv.series
     const xMax = Math.max(...series.map((p) => p.it))
     const bests = series.map((p) => p.best)
-    const lo = Math.min(...bests) // óptimo final
-    const span = Math.max(base - lo, 0) // mejora respecto al plateau de referencia
-    // Ventana enfocada y centrada sobre el plateau/óptimo.
-    const yMin = lo - Math.max(2, span)
-    const yMax = base + Math.max(6, span)
-    const entry = bests[0] // valor del que parte la curva (queda sobre el tope)
+    const lo = Math.min(...bests)
+    const span = Math.max(base - lo, 0)
+    // inst con mejora (inst07): zoom apretado sobre el salto — caída inicial se clipea.
+    // inst sin mejora (inst10): piso al fondo del frame, curva cae desde arriba.
+    const yMin = span > 0 ? lo - 1 : lo - 1
+    const yMax = span > 0 ? base + Math.max(3, span) : lo + 7
+    const entry = bests[0]
 
     const xScale = (it) => M.left + (xMax === 0 ? 0 : (it / xMax) * plotW)
     const yScale = (v) => M.top + (yMax === yMin ? 0 : (1 - (v - yMin) / (yMax - yMin)) * plotH)
@@ -54,8 +55,11 @@ export default function ConvergenceChart({ convergence, baseline, final }) {
 
   const { path, area, xMax, yMin, yMax, entry, xScale, yScale, runX, baseY, finX, finY } = calc
 
+  const yRange = yMax - yMin
+  const tickStep = yRange <= 10 ? 2 : yRange <= 25 ? 5 : 10
+  const firstTick = Math.ceil(yMin / tickStep) * tickStep
   const yTicks = []
-  for (let i = 0; i <= 4; i++) yTicks.push(Math.round(yMin + ((yMax - yMin) * i) / 4))
+  for (let v = firstTick; v <= yMax; v += tickStep) yTicks.push(v)
   const xTicks = []
   for (let t = 0; t <= xMax; t += 800) xTicks.push(t)
 
