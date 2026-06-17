@@ -1,0 +1,21 @@
+{
+  "name": "geoassay-tabu-demo",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Demo de visualizacion del solver de Busqueda Tabu para scheduling de laboratorio geoquimico",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "framer-motion": "^12.40.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "vite": "^5.4.11"
+  }
+}
